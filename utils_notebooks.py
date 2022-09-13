@@ -5,6 +5,7 @@ from std_msgs.msg import String
 from geometry_msgs.msg import Twist , PointStamped , Point
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan
+from sensor_msgs.msg import Image as ImageMsg
 from tf.transformations import euler_from_quaternion
 from visualization_msgs.msg import Marker , MarkerArray
 import numpy as np
@@ -15,7 +16,6 @@ from sklearn.decomposition import PCA
 import math as m
 import moveit_commander
 import moveit_msgs.msg
-
 import actionlib
 import subprocess
 
@@ -113,6 +113,25 @@ class RGBD():
     def set_coordinate_name(self, name):
         u"""座標の名前を設定する関数"""
         self._frame_name = name
+
+class HandRGB():
+    def __init__(self):
+        self.cam_sub = rospy.Subscriber(
+            '/hsrb/hand_camera/image_raw',
+            ImageMsg, self._callback)
+        self._points_data = None
+        self._image_data = None
+        
+    def _callback(self, msg):
+        
+#         self._points_data = ros_numpy.numpify(msg)
+        self._image_data = ros_numpy.numpify(msg)
+#         cv_image = bridge.imgmsg_to_cv2(image_message, desired_encoding='passthrough')
+        
+    def get_image(self):
+        image = self._image_data
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        return image
 
 def delete_object(name):
     u"""Gazeboの物体を消す関数
