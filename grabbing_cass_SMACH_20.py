@@ -391,11 +391,11 @@ def move_base(x,y,yaw,timeout=0.2):
         move_base_vel(x, y, yaw)
         
 def table_alignment():
-    hcp = head.get_current_joint_values()
-    hcp[0] = 0.0
-    hcp[1] = -0.5
-    head.set_joint_value_target(hcp)
-    head.go()
+#     hcp = head.get_current_joint_values()
+#     hcp[0] = 0.0
+#     hcp[1] = -0.5
+#     head.set_joint_value_target(hcp)
+#     head.go()
     threshold = 0.05
     while True:
         lin = get_line('head')
@@ -409,6 +409,10 @@ def table_alignment():
             break
         else:    
             move_base(0.0,0.0,0.7*e,0.2)
+            hcp = [0,0]
+            hcp[1] = -0.05*e
+            head.set_joint_value_target(hcp)
+            head.go()
             
             ########## Functions for takeshi states ##########
 class Proto_state(smach.State):###example of a state definition.
@@ -484,19 +488,18 @@ class Find_AR_marker(smach.State):
                 t = tfbuff.lookup_transform('base_link', 'ar_marker/201', rospy.Time(0) )
                 rospy.sleep(0.3)
                 trans, _ = tf2_obj_2_arr(t)
-                print(trans[0])
-                new = trans[0]
-                if(last== new):
+                distanceX = trans[0]
+                print(distanceX)
+                if distanceX < 0.60 and distanceX > 0.55:
                     hcp = head.get_current_joint_values()
-                    hcp[0] += 0.1
-                    hcp[1]= -0.2
+                    hcp[0] += 0.3
+                    hcp[1] = -0.2
                     head.set_joint_value_target(hcp)
                     head.go()
-                if trans[0] < 0.45:
+                if distanceX < 0.45:
                     succ = True
                 else:
                     tiny_move_base(x=0.5,std_time=0.1)
-                last = new
             except:
                 tiny_move_base(x=0.5,std_time=0.1)
         if succ:
@@ -513,13 +516,40 @@ class Pre_grasp_pose(smach.State):
         self.tries+=1
         if self.tries==3:
             return 'tries'
-        stopper.call()
 #         clear_octo_client()
         scene.remove_world_object()
         #static_tf_publish_furniture(-0.95,-0.5,0.0)
-        table_alignment()
-        rospy.sleep(0.5)
+        # intento de vuelta
+        succ = False
+        THRESHOLD = 0.1
+        hcp = [0.6,-0.1]
+        flag = True
+        while not succ:
+            try:
+                t = tfbuff.lookup_transform('base_link','ar_marker/201',rospy.Time(0))
+                _, rot = tf2_obj_2_arr(t)
+#     print(rot)
+                euler = tf.transformations.euler_from_quaternion(rot)
+                theta = euler[2]
+                e = theta + 1.57
+                print(e)
+                if abs(e) < THRESHOLD:
+                    print('estoy alineado krnal')
+                    succ = True
+                    hcp[0] = 0.0
+                    head.set_joint_value_target(hcp)
+                    head.go()
+                else:
+                    rospy.sleep(0.55)
+                    tiny_move_base(theta = 0.02*e, std_time=0.2)
+            except:
+                hcp[0] -= 0.2
+                head.set_joint_value_target(hcp)
+                head.go()
         
+        
+        rospy.sleep(0.2)
+        open_gripper()
         grasp_from_above_joints=[0.59,-1.3376,0,-1.8275,0.0,0.0]
         arm.set_joint_value_target(grasp_from_above_joints)
         succ = arm.go()
@@ -588,6 +618,7 @@ class AR_adjustment(smach.State):
                     succ = False
                     break
         if succ:
+            stopper.call()
             return 'succ'
         else:
             return 'failed'
@@ -623,190 +654,38 @@ class Color_adjustment(smach.State):
                 print('done')
                 succ = True
                 break
+        if succ:
+            return 'succ'
+        else:
+            return 'failed'
 
+    
+class Grasp_table(smach.State):
+    def __init__(self):
+        smach.State.__init__(self,outcomes=['succ','failed','tries'],input_keys=['global_counter'])
+        self.tries=0
+    def execute(self,userdata):
+        rospy.loginfo('STATE : robot neutral pose')
+        print('Try',self.tries,'of 5 attepmpts') 
+        self.tries+=1
+        if self.tries==3:
+            return 'tries'
+        scene.remove_world_object()
+        #Takeshi neutral
         acp = arm.get_current_joint_values()
         acp[0] = 0.56
         arm.set_joint_value_target(acp)
         arm.go()
-        if succ:
-            return 'succ'
-        else:
-            return 'failed'
-class Pre_grasp_shelf(smach.State):###get a convenient pre grasp pose
-    def __init__(self):
-        smach.State.__init__(self,outcomes=['succ','failed','tries'])
-        self.tries=0
-    def execute(self,userdata):
-        rospy.loginfo('State : PRE_GRASP_SHELF')
-        print ("self.tries",self.tries)
-        #target_tf= 'Object_0'
-        target_tf='Object_1_Table_2'
-        move_d_to(0.3,target_tf)
-        head.set_named_target('neutral')
-        head.go()
-        arm.set_named_target('neutral')
-        arm.go()
-        #move_to_pose_value(posZ=cch)
-        #open_gripper()      
-    
-        pose,quat= listener.lookupTransform('base_link',target_tf,rospy.Time(0))
-        pose[0]+=-0.15
-        #pose[1]+= 0.05
-        broadcaster.sendTransform(pose, quat,rospy.Time.now(),'Pre_grasp','base_link')
-        rospy.sleep(.1)    
-     
-        try:
-            xyz_map, quat =  listener.lookupTransform('map','Pre_grasp',rospy.Time(0))
-            print(xyz_map)
-        except(tf.LookupException):
-            print ('no pre grasp table2 tf')
-            self.tries+=1
-        #return 'failed'
-        
-        clear_octo_client()
-        move_to_pose_value(posZ=xyz_map[2])
-        open_gripper()
-        pose=arm.get_current_pose().pose.position
-        move_to_pose_value(CG=0,posZ=pose.z+0.05,posX=pose.x-0.25)   
- 
-        try:
-            xyz_map, quat =  	listener.lookupTransform('map','Pre_grasp',rospy.Time(0))
-            print(xyz_map)
-            succ = True
-        except(tf.LookupException):
-            print ('no pre grasp table2 tf')
-            self.tries+=1
-            succ=False
-        
-        
-        clear_octo_client()
-        move_to_pose_value(posZ=xyz_map[2])
-        open_gripper()
-        pose=arm.get_current_pose().pose.position
-        move_to_pose_value(CG=0,posZ=pose.z+0.05,posX=pose.x-0.25)
-    
-        if succ:
-            return 'succ'
-        else:
-            return 'failed'
-       
-##################################################Pre_grasp_floor()      
-class Grasp_shelf(smach.State):###example of a state definition.
-    def __init__(self):
-        smach.State.__init__(self,outcomes=['succ','failed','tries'])
-        self.tries=0
-    def execute(self,userdata):
-        rospy.loginfo('State : GRASP_SHELF')
-        target_tf='Object_1_Table_2'
-        pose, quat =  listener.lookupTransform('hand_palm_link',target_tf,rospy.Time(0))
-        print(pose)
-        while abs(pose[2]) > 0.15:
-            pose, quat =  listener.lookupTransform('hand_palm_link',target_tf,rospy.Time(0))
-            #robot_pose = whole_body.get_current_pose().pose.position
-            #delta =pose[0]-robot_pose.x
-            #print(delta)
-            if pose [1] >- 0.2 and pose[1]<0.02:
-                print ('getting close')
-                move_abs(0.05,0,0,0.1)
-            if pose[1] >= 0.02:
-                print ('drift correct   -')
-                move_abs(0.0,-0.05,-10, 0.10) 
-            if pose[1] <= -0.02:
-                print ('drift correct   +')
-                move_abs(0.0, 0.05,10, 0.10) #GRADOS! WTF , 
-        rospy.sleep(0.1)
-        clear_octo_client()
-        #move_to_pose_value(posZ=xyz_map[2])
-        #open_gripper()
-        #move_to_pose_value(CG=1,posY=xyz_map[1])
         close_gripper()
-        ajv = arm.get_current_joint_values()
-        print(ajv)
-        ajv[4]=-1
-        move_to_joint_value(ajv)
-        goal=whole_body.get_current_pose()
-
-        move_to_pose_value(posZ=goal.pose.position.z+0.10)
-        succ=True
-
-    
-        if succ:
-            return 'succ'
-        else:
-            return 'failed'
-
-class Safe_pos(smach.State):
-    def __init__(self):
-        smach.State.__init__(self,outcomes=['succ','failed','tries'],input_keys=['global_counter'])
-        self.tries=0
-
-        
-    def execute(self,userdata):
-
-        
-        rospy.loginfo('STATE : robot neutral pose')
-        print('Try',self.tries,'of 5 attepmpts') 
-        self.tries+=1
-        if self.tries==3:
-            return 'tries'
-        clear_octo_client()
-        scene.remove_world_object()
-        #Takeshi neutral
-        arm.set_named_target('go')
+        rospy.sleep(0.5)
+        acp = arm.get_current_joint_values()
+        acp[0] = 0.69
+        arm.set_joint_value_target(acp)
         arm.go()
-        head.set_named_target('neutral')
-        succ = head.go()             
-        if succ:
-            return 'succ'
-        else:
-            return 'failed'
-class Goto_play(smach.State):
-    def __init__(self):
-        smach.State.__init__(self,outcomes=['succ','failed','tries'],input_keys=['global_counter'])
-        self.tries=0
-
-        
-    def execute(self,userdata):
-
-        
-        rospy.loginfo('STATE : robot neutral pose')
-        print('Try',self.tries,'of 5 attepmpts') 
-        self.tries+=1
-        if self.tries==3:
-            return 'tries'
-        clear_octo_client()
-        scene.remove_world_object()
-        #Takeshi neutral
+        rospy.sleep(0.3)
+        tiny_move_base(x = -0.5)
         arm.set_named_target('go')
-        arm.go()
-        head.set_named_target('neutral')
-        succ = head.go()             
-        if succ:
-            return 'succ'
-        else:
-            return 'failed'
-
-class Leave_cas(smach.State):
-    def __init__(self):
-        smach.State.__init__(self,outcomes=['succ','failed','tries'],input_keys=['global_counter'])
-        self.tries=0
-
-        
-    def execute(self,userdata):
-
-        
-        rospy.loginfo('STATE : robot neutral pose')
-        print('Try',self.tries,'of 5 attepmpts') 
-        self.tries+=1
-        if self.tries==3:
-            return 'tries'
-        clear_octo_client()
-        scene.remove_world_object()
-        #Takeshi neutral
-        arm.set_named_target('go')
-        arm.go()
-        head.set_named_target('neutral')
-        succ = head.go()             
+        succ = arm.go()
         if succ:
             return 'succ'
         else:
@@ -843,7 +722,11 @@ def init(node_name):
     base_vel_pub = rospy.Publisher('/hsrb/command_velocity', Twist, queue_size=10)
     starter = rospy.ServiceProxy('/marker/start_recognition',Empty)
     stopper = rospy.ServiceProxy('/marker/stop_recognition',Empty)
-
+#     arm.set_max_velocity_scaling_factor
+    head.set_planning_time(0.3)
+    head.set_num_planning_attempts(1)
+    gripper.set_planning_time(0.3)
+    gripper.set_num_planning_attempts(1)
 
 #Entry point    
 if __name__== '__main__':
@@ -853,14 +736,16 @@ if __name__== '__main__':
     sm.userdata.sm_counter = 0
 
     with sm:
-        #State machine for grasping on Floor
+        #State machine for grasping on Table
         smach.StateMachine.add("INITIAL",Initial(),transitions = {'failed':'INITIAL', 'succ':'FIND_AR_MARKER', 'tries':'END'}) 
         smach.StateMachine.add("FIND_AR_MARKER",Find_AR_marker(),transitions = {'failed':'END', 'succ':'PRE_GRASP_POSE', 'tries':'FIND_AR_MARKER'}) 
         smach.StateMachine.add("PRE_GRASP_POSE",Pre_grasp_pose(),transitions = {'failed':'END', 'succ':'AR_ADJUSTMENT', 'tries':'PRE_GRASP_POSE'}) 
         smach.StateMachine.add("AR_ADJUSTMENT",AR_adjustment(),transitions = {'failed':'END', 'succ':'COLOR_ADJUSTMENT', 'tries':'COLOR_ADJUSTMENT'}) 
-        smach.StateMachine.add("COLOR_ADJUSTMENT",Color_adjustment(),transitions = {'failed':'END', 'succ':'END', 'tries':'END'}) 
+        smach.StateMachine.add("COLOR_ADJUSTMENT",Color_adjustment(),transitions = {'failed':'END', 'succ':'GRASP_TABLE', 'tries':'END'})
+        smach.StateMachine.add("GRASP_TABLE",Grasp_table(),transitions = {'failed':'END', 'succ':'END', 'tries':'GRASP_TABLE'})
 
       
 
     outcome = sm.execute()
+
 
