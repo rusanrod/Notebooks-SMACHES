@@ -2,7 +2,7 @@
 import tf as tf
 import rospy
 from std_msgs.msg import String
-from geometry_msgs.msg import Twist , PointStamped , Point
+from geometry_msgs.msg import Twist , PointStamped , Point, WrenchStamped
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan
 from sensor_msgs.msg import Image as ImageMsg
