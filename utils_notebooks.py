@@ -133,6 +133,25 @@ class HandRGB():
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         return image
 
+class WRIST_SENSOR():
+    def __init__(self):
+        self.cam_sub = rospy.Subscriber(
+            '/hsrb/wrist_wrench/compensated',
+            WrenchStamped, self._callback)
+        self.force = None
+        self.torque = None
+         
+    def _callback(self, msg):
+        self.force = msg.wrench.force
+        self.torque = msg.wrench.torque
+
+    def get_force(self):
+        force = [self.force.x, self.force.y, self.force.z]
+        return force
+    
+    def get_torque(self):
+        torque = [self.torque.x, self.torque.y, self.torque.z]
+        return torque
 def delete_object(name):
     u"""Gazeboの物体を消す関数
 
