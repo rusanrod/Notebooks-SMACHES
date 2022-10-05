@@ -134,7 +134,7 @@ class HAND_RGB():
 #Class to get wrist sensor info (Force and torque)
 class WRIST_SENSOR():
     def __init__(self):
-        self.cam_sub = rospy.Subscriber(
+        self._cam_sub = rospy.Subscriber(
             '/hsrb/wrist_wrench/compensated',
             WrenchStamped, self._callback)
         self.force = None
@@ -155,7 +155,7 @@ class WRIST_SENSOR():
 #Class to handle end effector (gripper)
 class GRIPPER():
     def __init__(self):
-        self.grip_cmd_pub = rospy.Publisher('/hsrb/gripper_controller/command',
+        self._grip_cmd_pub = rospy.Publisher('/hsrb/gripper_controller/command',
                                trajectory_msgs.msg.JointTrajectory, queue_size=100)
         self._joint_name = "hand_motor_joint"
         self._position = 0.5
@@ -173,7 +173,7 @@ class GRIPPER():
         p.effort = [self._effort]
         p.time_from_start = rospy.Duration(self._duration)
         traj.points = [p]
-        self.grip_cmd_pub.publish(traj)
+        self._grip_cmd_pub.publish(traj)
         
     def change_velocity(self, newVel):
         self._velocity = newVel
@@ -188,9 +188,9 @@ class GRIPPER():
         self._effort = 0.2
         self._manipulate_gripper()
 
-class MOVE_BASE():
+class OMNIBASE():
     def __init__(self):
-        self.base_vel_pub = rospy.Publisher('/hsrb/command_velocity', Twist, queue_size=10)
+        self._base_vel_pub = rospy.Publisher('/hsrb/command_velocity', Twist, queue_size=10)
         self.velX = 0
         self.velY = 0
         self.velT = 0
@@ -202,7 +202,7 @@ class MOVE_BASE():
             twist.linear.x = self.velX
             twist.linear.y = self.velY
             twist.angular.z = self.velT
-            self.base_vel_pub.publish(twist)
+            self._base_vel_pub.publish(twist)
 
     def _move_base_time(self):
             start_time = rospy.Time.now().to_sec()
