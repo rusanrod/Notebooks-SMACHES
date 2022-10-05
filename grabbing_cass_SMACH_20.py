@@ -2,16 +2,15 @@
 from std_srvs.srv import Empty, Trigger, TriggerRequest
 import smach
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
-from geometry_msgs.msg import PoseStamped, Point , Quaternion, Twist
+from geometry_msgs.msg import PoseStamped, Point , Quaternion, Twist, WrenchStamped
 from actionlib_msgs.msg import GoalStatus
 import moveit_commander
 import moveit_msgs.msg
-import tf2_ros
+import tf2_ros as tf2
 from tf2_sensor_msgs.tf2_sensor_msgs import do_transform_cloud
 import controller_manager_msgs.srv
 import rospy
 import trajectory_msgs.msg
-import geometry_msgs.msg
 #from object_classification.srv import *
 from sensor_msgs.msg import Image as ImageMsg
 from cv_bridge import CvBridge, CvBridgeError
@@ -19,16 +18,33 @@ from cv_bridge import CvBridge, CvBridgeError
 import cv2 as cv
 import numpy as np
 
-from utils_notebooks import *
+# from utils_notebooks import *
 from utils_takeshi import *
+from grasp_utils import *
 
-def color_segmentator(plot = False):
-    image = hand_cam.get_image()
-# print(image)
-# image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
+# import hsrb_interface
+# from hsrb_interface import Robot
+# from hsrb_interface import geometry
+
+def talk(msg):
+    talker = rospy.Publisher('/talk_request', Voice, queue_size=10)
+    voice = Voice()
+    voice.language = 1
+    voice.sentence = msg
+    talker.publish(voice)
+    
+""""def color_segmentator(cam = 'hand',color = 'orange', plot = False):
+    if cam == 'head':
+        image = rgbd.get_image()
+    else:
+        image = hand_cam.get_image()
+    if color == 'blue':
+        umbral_bajo = (100,120,100)
+        umbral_alto = (150,220,240)
+    else:
+        umbral_bajo = (102,95,97)
+        umbral_alto = (115,255,255)
     img_hsv = cv.cvtColor(image, cv.COLOR_RGB2HSV)
-    umbral_bajo = (102,95,97)
-    umbral_alto = (115,255,255)
 # hacemos la mask y filtramos en la original
     mask = cv2.inRange(img_hsv, umbral_bajo, umbral_alto)
     res = cv2.bitwise_and(img_hsv, img_hsv, mask=mask)
@@ -44,50 +60,20 @@ def color_segmentator(plot = False):
     pixels = list(cv.mean(pixels))
     pos.append(pixels[:2])
     return pos
-def get_line(camera):
-    if camera == 'hand':
-         img = hand_cam.get_image()
-    elif camera == 'head':
-        img = rgbd.get_image()
-#     cv.imwrite('table.jpg',img)
-#     img = cv.imread(cv.samples.findFile('table.jpg'))
-#     gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
-    gray = cv.cvtColor(img, cv.COLOR_RGB2GRAY)
-    edges = cv.Canny(gray, 50, 150, apertureSize = 3)
-    lines = cv.HoughLines(edges, 1, np.pi/180,200)
-#     if len(lines)
-    for line in lines:
-        rho, theta = line[0]
-        a = np.cos(theta)
-        b = np.sin(theta)
-        x0 = a*rho
-        y0 = b*rho
-        x1 = int(x0 + 1000*(-b))
-        y1 = int(y0 + 1000*(a))
-        x2 = int(x0 - 1000*(-b))
-        y2 = int(y0 - 1000*(a))
-#         if theta > 0.707 and theta < 2 and (y1 or y2)>480/2:
-#             cv.line(img, (x1, y1), (x2, y2), (0, 0, 255), 2)
-#     cv.line(img, (x1, y1), (x2, y2), (0, 0, 255), 2)    
-#     cv.imwrite('TableLines.jpg',img)
-    return lines
 
 def tf2_obj_2_arr(transf):
     trans = []
+    rot = []
     trans.append(transf.transform.translation.x)
     trans.append(transf.transform.translation.y)
     trans.append(transf.transform.translation.z)
-    
-    rot = []
     rot.append(transf.transform.rotation.x)
     rot.append(transf.transform.rotation.y)
     rot.append(transf.transform.rotation.z)
     rot.append(transf.transform.rotation.w)
+    return [trans, rot]"""
     
-    return [trans, rot]
-    
-    
-def correct_points(low_plane=.0,high_plane=0.2):
+def correct_points(low_plane=0.0, high_plane=0.2):
 
     #Corrects point clouds "perspective" i.e. Reference frame head is changed to reference frame map
     data = rospy.wait_for_message('/hsrb/head_rgbd_sensor/depth_registered/rectified_points', PointCloud2)
@@ -132,10 +118,10 @@ def plane_seg_square_imgs(lower=500, higher=50000, reg_ly= 30, reg_hy=600, plt_i
     
 #     cv2 on python 3
     contours, hierarchy = cv2.findContours(img3.astype('uint8'),cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
-    i=0
-    cents=[]
-    points=[]
-    images=[]
+    i = 0
+    cents = []
+    points = []
+    images = []
     for i, contour in enumerate(contours):
         area = cv2.contourArea(contour)
         if area > lower and area < higher :
@@ -156,9 +142,9 @@ def plane_seg_square_imgs(lower=500, higher=50000, reg_ly= 30, reg_hy=600, plt_i
                 #print ('cX,cY',cX,cY)
                 xyz = []
 
-                for jy in range (boundRect[0], boundRect[0]+boundRect[2]):
-                    for ix in range(boundRect[1], boundRect[1]+boundRect[3]):
-                        aux = (np.asarray((points_data['x'][ix,jy],points_data['y'][ix,jy],points_data['z'][ix,jy])))
+                for jy in range (boundRect[0], boundRect[0] + boundRect[2]):
+                    for ix in range(boundRect[1], boundRect[1] + boundRect[3]):
+                        aux = (np.asarray((points_data['x'][ix,jy], points_data['y'][ix,jy], points_data['z'][ix,jy])))
                         if np.isnan(aux[0]) or np.isnan(aux[1]) or np.isnan(aux[2]):
                             'reject point'
                         else:
@@ -181,7 +167,7 @@ def plane_seg_square_imgs(lower=500, higher=50000, reg_ly= 30, reg_hy=600, plt_i
             plt.imshow(image)
             plt.axis("off")
 
-    cents=np.asarray(cents)
+    cents = np.asarray(cents)
     ### returns centroids found and a group of 3d coordinates that conform the centroid
     return(cents,np.asarray(points), images)
 
@@ -259,7 +245,7 @@ def seg_square_imgs(lower=2000, higher=50000, reg_ly=0, reg_hy=1000, reg_lx=0, r
     #images.append(img)
     return(cents,np.asarray(points), images)
 
-def __manipulate_gripper(pos = 0.5, vel = 0.5, effort = 0.2):
+"""""def __manipulate_gripper(pos = 0.5, vel = 0.5, effort = 0.2):
     grip_cmd_pub = rospy.Publisher('/hsrb/gripper_controller/command',
                                trajectory_msgs.msg.JointTrajectory, queue_size=100)
     traj = trajectory_msgs.msg.JointTrajectory()
@@ -278,7 +264,7 @@ def open_gripper(eff=0.5):
     __manipulate_gripper(pos=1.23, vel=0.5, effort=eff)
     
 def close_gripper(eff=0.5):
-    __manipulate_gripper(pos=-0.831, vel=-0.5, effort=-eff)
+    __manipulate_gripper(pos=-0.831, vel=-0.5, effort=-eff)"""
 
 def static_tf_publish(cents):
 #     Publish tfs of the centroids obtained w.r.t. head sensor frame and references them to map (static)
@@ -337,82 +323,28 @@ def static_tf_publish(cents):
     tf_static_broad.sendTransform(static_ts)
     return closest_centroid_height, closest_centroid_index
 
-def static_publish_ARmarker():
-    transf = tfbuff.lookup_transform('map', 'ar_marker/201', rospy.Time(0))
-    [xyz_map, cent_quat] = tf2_obj_2_arr(transf)
-    print('Height closest centroid map', xyz_map[2])
-    map_euler = tf.transformations.euler_from_quaternion(cent_quat)
-    rospy.sleep(.5)
-#     FIXING TF TO MAP ( ODOM REALLY)    
-    static_ts = TransformStamped()
-    static_ts.header.stamp = rospy.Time.now()
-    static_ts.header.frame_id = "map"
-    static_ts.child_frame_id = 'cassette'
-    static_ts.transform.translation.x = float(xyz_map[0])
-    static_ts.transform.translation.y = float(xyz_map[1])
-    static_ts.transform.translation.z = float(xyz_map[2])
-#     quat = tf.transformations.quaternion_from_euler(-euler[0],0,1.5)
-    static_ts.transform.rotation.x = 0#-quat[0]#trans.transform.rotation.x
-    static_ts.transform.rotation.y = 0#-quat[1]#trans.transform.rotation.y
-    static_ts.transform.rotation.z = 0#-quat[2]#trans.transform.rotation.z
-    static_ts.transform.rotation.w = 1#-quat[3]#trans.transform.rotation.w
-    print ('xyz_map', xyz_map)
-    tf_static_broad.sendTransform(static_ts)
-
-def tiny_move_base(x = 0, y = 0, theta = 0, std_time = 0.5, MAX_VEL = 0.03):
-    MAX_VEL = 0.03
-    velX = x/std_time
-    velY = y/std_time
-    time = std_time
-    if abs(velX) > MAX_VEL or abs(velY) > MAX_VEL:
-        newVelX =  MAX_VEL * np.sign(velX)
-        newVelY = MAX_VEL * np.sign(velY)
-#         timeX = x / MAX_VEL
-#         timeY = y / MAX_VEL
-#         if timeX > timeY:
-#             time = timeX
-#         else:
-#             time = timeY
-    else :
-        newVelX = velX
-        newVelY = velY
-    move_base(newVelX, newVelY, theta/std_time, time)
-
-def move_base_vel(vx, vy, vw):
+###functions to move omnibase###
+""""def move_base_vel(vx, vy, vw):
     twist = Twist()
     twist.linear.x = vx
     twist.linear.y = vy
     twist.angular.z = vw 
     base_vel_pub.publish(twist)
 
-def move_base(x,y,yaw,timeout=0.2):
+def move_base_time(x,y,yaw,timeout=0.2):
     start_time = rospy.Time.now().to_sec()
     while rospy.Time.now().to_sec() - start_time < timeout:  
         move_base_vel(x, y, yaw)
-        
-def table_alignment():
-#     hcp = head.get_current_joint_values()
-#     hcp[0] = 0.0
-#     hcp[1] = -0.5
-#     head.set_joint_value_target(hcp)
-#     head.go()
-    threshold = 0.05
-    while True:
-        lin = get_line('head')
-        suma = 0
-        for el in lin:
-            suma += el[0][1]
-        prom = suma / len(lin)
-        e = 1.5707 - prom
-        print(e)
-        if abs(e) < threshold:
-            break
-        else:    
-            move_base(0.0,0.0,0.7*e,0.2)
-            hcp = [0,0]
-            hcp[1] = -0.05*e
-            head.set_joint_value_target(hcp)
-            head.go()
+
+def tiny_move_base(velX = 0, velY = 0, velT = 0, std_time = 0.5, MAX_VEL = 0.03):
+    if abs(velX) > MAX_VEL: 
+        velX =  MAX_VEL * (velX / abs(velX))
+    if abs(velY) > MAX_VEL:
+        velY = MAX_VEL * (velY / abs(velY))
+    move_base_time(velX, velY, velT, std_time)"""
+
+##################################
+
             
             ########## Functions for takeshi states ##########
 class Proto_state(smach.State):###example of a state definition.
@@ -450,15 +382,18 @@ class Initial(smach.State):
         self.tries+=1
         if self.tries==3:
             return 'tries'
-        clear_octo_client()
+# State initial
+        try:
+            clear_octo_client()
+        except:
+            print('cant clear octomap')
         stopper.call()
-        scene.remove_world_object()
         #Takeshi neutral
         arm.set_named_target('go')
         arm.go()
+        gripper.open()
         head.set_named_target('neutral')
         succ = head.go()
-        starter.call()
         if succ:
             return 'succ'
         else:
@@ -473,16 +408,24 @@ class Find_AR_marker(smach.State):
         self.tries+=1
         if self.tries==3:
             return 'tries'
-        clear_octo_client()
-        scene.remove_world_object()
+        # State Find AR marker
+        try:
+            starter.call()
+            clear_octo_client()
+        except:
+            print('cant clear octomap')
         #Takeshi looks for AR marker
+        
+        rospy.sleep(0.1)
         hcp = head.get_current_joint_values()
-        hcp[0]=0.4
-        hcp[1]= -0.2
+        hcp[0] = 0.5
+        hcp[1] = -0.2
         head.set_joint_value_target(hcp)
         head.go()
         succ = False
-        last = 0
+        flag = True
+        talk("I am going to find any AR marker")
+        rospy.sleep(0.3)
         while not succ:
             try:
                 t = tfbuff.lookup_transform('base_link', 'ar_marker/201', rospy.Time(0) )
@@ -490,22 +433,80 @@ class Find_AR_marker(smach.State):
                 trans, _ = tf2_obj_2_arr(t)
                 distanceX = trans[0]
                 print(distanceX)
-                if distanceX < 0.60 and distanceX > 0.55:
+                flag = not flag
+                if distanceX < 0.60 and distanceX > 0.55 and flag:
                     hcp = head.get_current_joint_values()
-                    hcp[0] += 0.3
+                    hcp[0] += 0.4
                     hcp[1] = -0.2
                     head.set_joint_value_target(hcp)
                     head.go()
                 if distanceX < 0.45:
                     succ = True
                 else:
-                    tiny_move_base(x=0.5,std_time=0.1)
+                    grasp_base.tiny_move(velX=0.6,std_time=0.1)
             except:
-                tiny_move_base(x=0.5,std_time=0.1)
+                grasp_base.tiny_move(velX=0.5,std_time=0.1)
         if succ:
             return 'succ'
         else:
             return 'failed'
+        
+class AR_alignment(smach.State):
+    def __init__(self):
+        smach.State.__init__(self,outcomes=['succ','failed','tries'])
+        self.tries=0
+    def execute(self,userdata):
+        rospy.loginfo('State : pre grasp pose ')
+        print('Try',self.tries,'of 5 attepmpts') 
+        self.tries+=1
+        if self.tries==3:
+            return 'tries'
+        # State AR alignment
+        succ = False
+        THRESHOLD = 0.09
+        hcp = [0.6,-0.1]
+        flag = True
+        talk("I am going to align with the table")
+        while not succ:
+            try:
+                t = tfbuff.lookup_transform('base_link','ar_marker/201',rospy.Time(0))
+                _, rot = tf2_obj_2_arr(t)
+#     print(rot)
+                euler = tf.transformations.euler_from_quaternion(rot)
+                theta = euler[2]
+                e = theta + 1.57
+                print(e)
+#                 if abs(e) < 1.5 and abs(e)>0.6:
+#                     hcp[0] = 0.3
+#                     head.set_joint_value_target(hcp)
+#                     head.go()
+                if abs(e) < THRESHOLD:
+                    talk("ready")
+                    succ = True
+#                     hcp[0] = 0.4
+#                     head.set_joint_value_target(hcp)
+#                     head.go()
+                else:
+                    rospy.sleep(0.55)
+                    grasp_base.tiny_move(velT = 0.2*e, std_time=0.2)
+                    flag = not flag
+                    if flag:
+                        hcp[0] -= 0.1 * (e/abs(e))
+                        head.set_joint_value_target(hcp)
+                        head.go()
+            except:
+                hcp[0] -= 0.2
+                if hcp[0] > -1.2:
+                    hcp[0] = 0.0
+                head.set_joint_value_target(hcp)
+                head.go()
+                
+        
+        if succ:
+            return 'succ'
+        else:
+            return 'failed'
+
 class Pre_grasp_pose(smach.State):
     def __init__(self):
         smach.State.__init__(self,outcomes=['succ','failed','tries'])
@@ -517,40 +518,11 @@ class Pre_grasp_pose(smach.State):
         if self.tries==3:
             return 'tries'
 #         clear_octo_client()
-        scene.remove_world_object()
-        #static_tf_publish_furniture(-0.95,-0.5,0.0)
-        # intento de vuelta
+        # State Pre grasp pose
         succ = False
-        THRESHOLD = 0.1
-        hcp = [0.6,-0.1]
-        flag = True
-        while not succ:
-            try:
-                t = tfbuff.lookup_transform('base_link','ar_marker/201',rospy.Time(0))
-                _, rot = tf2_obj_2_arr(t)
-#     print(rot)
-                euler = tf.transformations.euler_from_quaternion(rot)
-                theta = euler[2]
-                e = theta + 1.57
-                print(e)
-                if abs(e) < THRESHOLD:
-                    print('estoy alineado krnal')
-                    succ = True
-                    hcp[0] = 0.0
-                    head.set_joint_value_target(hcp)
-                    head.go()
-                else:
-                    rospy.sleep(0.55)
-                    tiny_move_base(theta = 0.02*e, std_time=0.2)
-            except:
-                hcp[0] -= 0.2
-                head.set_joint_value_target(hcp)
-                head.go()
-        
-        
-        rospy.sleep(0.2)
-        open_gripper()
-        grasp_from_above_joints=[0.59,-1.3376,0,-1.8275,0.0,0.0]
+        talk("I will reach the cassette")
+        gripper.open()
+        grasp_from_above_joints = [0.59,-1.3376,0,-1.8275,0.0,0.0]
         arm.set_joint_value_target(grasp_from_above_joints)
         succ = arm.go()
         if succ:
@@ -568,9 +540,14 @@ class AR_adjustment(smach.State):
         self.tries+=1
         if self.tries==3: 
             return'tries'
-        clear_octo_client()
-        scene.remove_world_object()
-        #Takeshi gets close to the shelf
+        # State AR adjustment
+
+        try:
+            clear_octo_client()
+        except:
+            print('cant clear octomap')
+#         scene.remove_world_object()
+        #Takeshi gets close to the cassette
         starter.call()
         succ = False
         X_OFFSET = 0.0
@@ -584,26 +561,27 @@ class AR_adjustment(smach.State):
         hcp[1] = -0.5
         head.set_joint_value_target(hcp)
         head.go()
-        while(True):
+        succ = False
+        while not succ:
             try:
                 t = tfbuff.lookup_transform('hand_palm_link', 'ar_marker/201', rospy.Time(0) )
 #         t = tfbuff.lookup_transform('hand_palm_link', 'ar_marker/4000', rospy.Time(0) )
                 traf = t.transform.translation
                 rospy.sleep(.6)
         # tiny_move_base(y = 0.163)
-                ex = x = traf.x + X_OFFSET
+                ex = traf.x + X_OFFSET
                 ey = -traf.y + Y_OFFSET
                 print(ex, ey)
                 if abs(ex) > THRESHOLD:
-                    tiny_move_base(x = ex)#, y = -traf.y + Y_OFFSET)
+                    grasp_base.tiny_move(velX = ex, MAX_VEL = 0.05)#, y = -traf.y + Y_OFFSET)
                 if abs(ey) > THRESHOLD:
-                    tiny_move_base(y = ey)
+                    grasp_base.tiny_move(velY = ey, MAX_VEL = 0.05)
                 if (abs(ex) <= THRESHOLD and abs(ey) <= THRESHOLD):
                     hcp[0] = 0
                     head.set_joint_value_target(hcp)
                     head.go()
+                    talk("I am almost there")
                     succ = True
-                    break
             except:
                 hcp = head.get_current_joint_values()
                 hcp[0] -= 0.1   
@@ -622,6 +600,7 @@ class AR_adjustment(smach.State):
             return 'succ'
         else:
             return 'failed'
+        
 class Color_adjustment(smach.State):
     def __init__(self):
         smach.State.__init__(self,outcomes=['succ','failed','tries'])
@@ -632,33 +611,35 @@ class Color_adjustment(smach.State):
         self.tries+=1
         if self.tries==3: 
             return'tries'
-        clear_octo_client()
-        scene.remove_world_object()
-        #Takeshi scans the shelf
+        # State color adjustment
+        try:
+            clear_octo_client()
+        except:
+            print('cant clear octomap')
+
+        #Takeshi detects the cassette by color and go for it
         succ = False
         THRESHOLD = 15
-        while(True):
-            goalPos = [258.61,261.75]
-            [currentPos] = color_segmentator()
+        goalPos = [258.61,261.75]
+        while not succ:
+            [currentPos] = hand_cam.color_segmentator(color = 'orange')
 #     print(currentPos)
             ex = -(goalPos[0]-currentPos[0]) 
             ey = (goalPos[1]-currentPos[1])
             print(ex, ey)
             if abs(ex) > THRESHOLD:
-                tiny_move_base(x = ex, std_time=0.1, MAX_VEL=0.01)#, y = -traf.y + Y_OFFSET)
+                grasp_base.tiny_move(velX = ex, std_time=0.1, MAX_VEL=0.01)#, y = -traf.y + Y_OFFSET)
                 rospy.sleep(0.5)
             if abs(ey) > THRESHOLD:
-                tiny_move_base(y = ey, std_time=0.1, MAX_VEL=0.01)
+                grasp_base.tiny_move(velY = ey, std_time=0.1, MAX_VEL=0.01)
                 rospy.sleep(0.5)
             if (abs(ex) <= THRESHOLD and abs(ey) <= THRESHOLD):
-                print('done')
+                talk("done, now i will take it")
                 succ = True
-                break
         if succ:
             return 'succ'
         else:
             return 'failed'
-
     
 class Grasp_table(smach.State):
     def __init__(self):
@@ -669,23 +650,73 @@ class Grasp_table(smach.State):
         print('Try',self.tries,'of 5 attepmpts') 
         self.tries+=1
         if self.tries==3:
-            return 'tries'
-        scene.remove_world_object()
-        #Takeshi neutral
-        acp = arm.get_current_joint_values()
-        acp[0] = 0.56
+            return 'failed'
+        # State grasp table
+        gripper.open()
+        rospy.sleep(0.3)
+        acp = [0.56,-1.3376,0,-1.8275,0.0,0.0]
         arm.set_joint_value_target(acp)
         arm.go()
-        close_gripper()
-        rospy.sleep(0.5)
+        gripper.close()
+        rospy.sleep(0.3)
+        
+        check_grasp_joints=[0.69,-1.3376,0,-1.8275,0.0,0.0]
+        arm.set_joint_value_target(check_grasp_joints)
+        arm.go()
+        
+        check_grasp_joints=[0.69,-1.3376,-0.8,-1.8275,0.0,0.0]
+        arm.set_joint_value_target(check_grasp_joints)
+        arm.go()
+
+        THRESHOLD = 30
+        goalPos = [233.80,268.74]
+        [currentPos] = hand_cam.color_segmentator(color = 'orange')
+        ex = -(goalPos[0]-currentPos[0]) 
+        ey = (goalPos[1]-currentPos[1])
+        if (abs(ex) <= THRESHOLD and abs(ey) <= THRESHOLD):
+            talk("I have the cassete")
+            return 'succ'
+        else:
+            talk("Something went wrong, i will try again")
+            return 'tries'
+        
+class Post_grasp_pose(smach.State):
+    def __init__(self):
+        smach.State.__init__(self,outcomes=['succ','failed','tries'],input_keys=['global_counter'])
+        self.tries=0
+    def execute(self,userdata):
+        rospy.loginfo('STATE : robot neutral pose')
+        print('Try',self.tries,'of 5 attepmpts') 
+        self.tries+=1
+        if self.tries==3:
+            return 'tries'
+        # State post grasp pose
         acp = arm.get_current_joint_values()
         acp[0] = 0.69
         arm.set_joint_value_target(acp)
         arm.go()
         rospy.sleep(0.3)
-        tiny_move_base(x = -0.5)
+        grasp_base.tiny_move(velX = -0.6, std_time=0.9)
         arm.set_named_target('go')
         succ = arm.go()
+        if succ:
+            return 'succ'
+        else:
+            return 'failed'
+        
+class Right_shift(smach.State):
+    def __init__(self):
+        smach.State.__init__(self,outcomes=['succ','failed','tries'],input_keys=['global_counter'])
+        self.tries=0
+    def execute(self,userdata):
+        rospy.loginfo('STATE : robot neutral pose')
+        print('Try',self.tries,'of 5 attepmpts') 
+        self.tries+=1
+        if self.tries==3:
+            return 'tries'
+# State right shift
+        grasp_base.tiny_move(velY = -0.8, std_time=0.8)
+        succ = True
         if succ:
             return 'succ'
         else:
@@ -694,56 +725,53 @@ class Grasp_table(smach.State):
 #Initialize global variables and node
 def init(node_name):
 
-    global lis, broad, tf_static_broad, tfbuff,scene, rgbd, gripper, head, whole_body, hand_cam
-    global arm, goal, navclient, clear_octo_client, service_client, base_vel_pub, starter, stopper
+    global head, whole_body, arm, tfbuff, lis, broad, tf_static_broad, scene, robot
+    global rgbd, hand_cam, wrist, gripper, grasp_base, clear_octo_client, service_client, AR_starter, AR_stopper
 
     moveit_commander.roscpp_initialize(sys.argv)
-    rospy.init_node('Grab_cassette')
+    rospy.init_node('Pruebas_de_graspeo_v2')
     head = moveit_commander.MoveGroupCommander('head')
-    gripper = moveit_commander.MoveGroupCommander('gripper')
     whole_body = moveit_commander.MoveGroupCommander('whole_body_light')
     arm =  moveit_commander.MoveGroupCommander('arm')
     
-    tfbuff = tf2_ros.Buffer()
-    lis = tf2_ros.TransformListener(tfbuff)
-    broad = tf2_ros.TransformBroadcaster()
-    tf_static_broad = tf2_ros.StaticTransformBroadcaster()
+    tfbuff = tf2.Buffer()
+    lis = tf2.TransformListener(tfbuff)
+    broad = tf2.TransformBroadcaster()
+    tf_static_broad = tf2.StaticTransformBroadcaster()
     whole_body.set_workspace([-6.0, -6.0, 6.0, 6.0]) 
     
     scene = moveit_commander.PlanningSceneInterface()
     robot = moveit_commander.RobotCommander()
     rgbd = RGBD()
-    hand_cam = HandRGB()
-    goal = MoveBaseGoal()
-    
-    navclient = actionlib.SimpleActionClient('/move_base/move', MoveBaseAction)
+    hand_cam = HAND_RGB()
+    wrist = WRIST_SENSOR()
+    gripper = GRIPPER()
+    grasp_base = OMNIBASE()
+
     clear_octo_client = rospy.ServiceProxy('/clear_octomap', Empty)
     service_client = rospy.ServiceProxy('/segment_2_tf', Trigger)
-    base_vel_pub = rospy.Publisher('/hsrb/command_velocity', Twist, queue_size=10)
-    starter = rospy.ServiceProxy('/marker/start_recognition',Empty)
-    stopper = rospy.ServiceProxy('/marker/stop_recognition',Empty)
-#     arm.set_max_velocity_scaling_factor
+    AR_starter = rospy.ServiceProxy('/marker/start_recognition',Empty)
+    AR_stopper = rospy.ServiceProxy('/marker/stop_recognition',Empty)
+    
     head.set_planning_time(0.3)
     head.set_num_planning_attempts(1)
-    gripper.set_planning_time(0.3)
-    gripper.set_num_planning_attempts(1)
-
 #Entry point    
 if __name__== '__main__':
     print("Takeshi STATE MACHINE...")
     init("takeshi_smach_20")
     sm = smach.StateMachine(outcomes = ['END'])     #State machine, final state "END"
-    sm.userdata.sm_counter = 0
 
     with sm:
         #State machine for grasping on Table
         smach.StateMachine.add("INITIAL",Initial(),transitions = {'failed':'INITIAL', 'succ':'FIND_AR_MARKER', 'tries':'END'}) 
-        smach.StateMachine.add("FIND_AR_MARKER",Find_AR_marker(),transitions = {'failed':'END', 'succ':'PRE_GRASP_POSE', 'tries':'FIND_AR_MARKER'}) 
-        smach.StateMachine.add("PRE_GRASP_POSE",Pre_grasp_pose(),transitions = {'failed':'END', 'succ':'AR_ADJUSTMENT', 'tries':'PRE_GRASP_POSE'}) 
+        smach.StateMachine.add("FIND_AR_MARKER",Find_AR_marker(),transitions = {'failed':'END', 'succ':'AR_ALIGNMENT', 'tries':'FIND_AR_MARKER'}) 
+        smach.StateMachine.add("AR_ALIGNMENT",AR_alignment(),transitions = {'failed':'AR_ALIGNMENT', 'succ':'PRE_GRASP_POSE', 'tries':'AR_ALIGNMENT'}) 
+        smach.StateMachine.add("PRE_GRASP_POSE",Pre_grasp_pose(),transitions = {'failed':'RIGHT_SHIFT', 'succ':'AR_ADJUSTMENT', 'tries':'PRE_GRASP_POSE'}) 
+        smach.StateMachine.add("RIGHT_SHIFT",Right_shift(),transitions = {'failed':'RIGHT_SHIFT', 'succ':'PRE_GRASP_POSE', 'tries':'PRE_GRASP_POSE'}) 
         smach.StateMachine.add("AR_ADJUSTMENT",AR_adjustment(),transitions = {'failed':'END', 'succ':'COLOR_ADJUSTMENT', 'tries':'COLOR_ADJUSTMENT'}) 
         smach.StateMachine.add("COLOR_ADJUSTMENT",Color_adjustment(),transitions = {'failed':'END', 'succ':'GRASP_TABLE', 'tries':'END'})
-        smach.StateMachine.add("GRASP_TABLE",Grasp_table(),transitions = {'failed':'END', 'succ':'END', 'tries':'GRASP_TABLE'})
-
+        smach.StateMachine.add("GRASP_TABLE",Grasp_table(),transitions = {'failed':'END', 'succ':'POST_GRASP_POSE', 'tries':'GRASP_TABLE'})
+        smach.StateMachine.add("POST_GRASP_POSE",Post_grasp_pose(),transitions = {'failed':'END', 'succ':'END', 'tries':'GRASP_TABLE'})
       
 
     outcome = sm.execute()

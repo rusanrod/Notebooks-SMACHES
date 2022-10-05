@@ -227,3 +227,17 @@ class OMNIBASE():
             self.velT = velT
         self._move_base_time()
 
+# Funciones aisladas
+def tf2_obj_2_arr(transf):
+    trans = []
+    trans.append(transf.transform.translation.x)
+    trans.append(transf.transform.translation.y)
+    trans.append(transf.transform.translation.z)
+    
+    rot = []
+    rot.append(transf.transform.rotation.x)
+    rot.append(transf.transform.rotation.y)
+    rot.append(transf.transform.rotation.z)
+    rot.append(transf.transform.rotation.w)
+    
+    return [trans, rot]
