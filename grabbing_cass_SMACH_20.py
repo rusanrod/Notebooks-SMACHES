@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-from std_srvs.srv import Empty, Trigger, TriggerRequest
+import sys
 import smach
+from std_srvs.srv import Empty, Trigger, TriggerRequest
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from geometry_msgs.msg import PoseStamped, Point , Quaternion, Twist, WrenchStamped
+from tmc_msgs.msg import Voice
 from actionlib_msgs.msg import GoalStatus
 import moveit_commander
 import moveit_msgs.msg
@@ -387,7 +389,7 @@ class Initial(smach.State):
             clear_octo_client()
         except:
             print('cant clear octomap')
-        stopper.call()
+        AR_stopper.call()
         #Takeshi neutral
         arm.set_named_target('go')
         arm.go()
@@ -410,7 +412,7 @@ class Find_AR_marker(smach.State):
             return 'tries'
         # State Find AR marker
         try:
-            starter.call()
+            AR_starter.call()
             clear_octo_client()
         except:
             print('cant clear octomap')
@@ -548,7 +550,7 @@ class AR_adjustment(smach.State):
             print('cant clear octomap')
 #         scene.remove_world_object()
         #Takeshi gets close to the cassette
-        starter.call()
+        AR_starter.call()
         succ = False
         X_OFFSET = 0.0
         Y_OFFSET = 0.19
@@ -596,7 +598,7 @@ class AR_adjustment(smach.State):
                     succ = False
                     break
         if succ:
-            stopper.call()
+            AR_stopper.call()
             return 'succ'
         else:
             return 'failed'
