@@ -7,6 +7,7 @@ import ros_numpy
 from std_msgs.msg import String
 from geometry_msgs.msg import Twist, WrenchStamped
 from sensor_msgs.msg import Image as ImageMsg, PointCloud2
+import tmc_control_msgs.msg
 import trajectory_msgs.msg
 
 #import math as m
@@ -156,6 +157,9 @@ class GRIPPER():
     def __init__(self):
         self._grip_cmd_pub = rospy.Publisher('/hsrb/gripper_controller/command',
                                trajectory_msgs.msg.JointTrajectory, queue_size=100)
+        self._grip_cmd_force = rospy.Publisher('/hsrb/gripper_controller/grasp/goal',
+        			tmc_control_msgs.msg.GripperApplyEffortActionGoal, queue_size=100)
+        			
         self._joint_name = "hand_motor_joint"
         self._position = 0.5
         self._velocity = 0.5
@@ -174,18 +178,24 @@ class GRIPPER():
         traj.points = [p]
         self._grip_cmd_pub.publish(traj)
         
+    def _apply_force(self):
+        app_force = tmc_control_msgs.msg.GripperApplyEffortActionGoal()
+        app_force.goal.effort = -0.5
+        self._grip_cmd_force.publish(app_force)
+        
     def change_velocity(self, newVel):
         self._velocity = newVel
     
     def open(self):
         self._position = 1.23
-        self._effort = 0.2
+        self._effort = 0
         self._manipulate_gripper()
     
     def close(self):
         self._position = -0.82
-        self._effort = 0.2
+        self._effort = -0.3
         self._manipulate_gripper()
+        self._apply_force()
 
 class OMNIBASE():
     def __init__(self):
