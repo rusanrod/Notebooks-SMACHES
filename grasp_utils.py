@@ -348,6 +348,13 @@ class TF_MANAGER():
 
         return [trans, rot]
 
+    def getTF(self, ref_Frame='', target_Fame=''):
+        try:
+            tf = self._tfbuff.lookup_transform(ref_Frame,target_Fame,rospy.Time(0))
+            return self.tf2_obj_2_arr(tf)
+        except:
+            return False
+
 def talk(msg):
     talker = rospy.Publisher('/talk_request', Voice, queue_size=10)
     voice = Voice()
