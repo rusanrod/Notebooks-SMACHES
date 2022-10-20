@@ -249,16 +249,26 @@ class GAZE():
         self._y = 0
         self._z = 0
         self._reference = 'map'
-        self._cam = 'head_rgbd_sensor_gazebo_frame'
+        self._cam = 'head_rgbd_sensor_link'
         self._base = 'base_link'
         self._hand = 'hand_palm_link'
+        self._tf_man = TF_MANAGER()
     def _gaze_point(self):
     ###Moves head to make center point of rgbd image to coordinates w.r.t.map
-        traf1 = tfbuff.lookup_transform(self._reference, self._cam, rospy.Time(0))
-        rospy.sleep(0.5)
-        traf2 = tfbuff.lookup_transform(self._reference, self._base, rospy.Time(0)) 
-        trans,_ = tf2_obj_2_arr(traf1)
-        _, rot = tf2_obj_2_arr(traf2)
+        # traf1 = self._tfbuff.lookup_transform(self._reference, self._cam, rospy.Time(0))
+        # rospy.sleep(0.5)
+        # traf2 = selftfbuff.lookup_transform(self._reference, self._base, rospy.Time(0)) 
+        # trans,_ = tf2_obj_2_arr(traf1)
+        # _, rot = tf2_obj_2_arr(traf2)
+
+
+        trans, dc = self._tf_man.getTF(self._reference,self._cam)
+        rospy.sleep(0.3)
+        dc,rot = self._tf_man.getTF(self._reference, self._base)
+
+        # trans,dc = self._tf_man.tf2_obj_2_arr(transformation1)
+        # dc,rot = self._tf_man.tf2_obj_2_arr(transformation2)
+
         e = tf.transformations.euler_from_quaternion(rot)
 
         x_rob, y_rob, z_rob, th_rob = trans[0], trans[1], trans[2], e[2]
@@ -353,7 +363,7 @@ class TF_MANAGER():
             tf = self._tfbuff.lookup_transform(ref_Frame,target_Fame,rospy.Time(0))
             return self.tf2_obj_2_arr(tf)
         except:
-            return False
+            return [False,False]
 
 def talk(msg):
     talker = rospy.Publisher('/talk_request', Voice, queue_size=10)
