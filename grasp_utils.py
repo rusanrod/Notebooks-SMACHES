@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 import cv2 
 import tf as tf
+import tf2_ros as tf2
 import rospy
 import numpy as np
 import ros_numpy
 from std_msgs.msg import String
-from geometry_msgs.msg import Twist, WrenchStamped
+from tmc_msgs.msg import Voice
+from geometry_msgs.msg import Twist, WrenchStamped, TransformStamped
 from sensor_msgs.msg import Image as ImageMsg, PointCloud2
 import tmc_control_msgs.msg
 import trajectory_msgs.msg
@@ -190,7 +192,12 @@ class GRIPPER():
         self._position = 1.23
         self._effort = 0
         self._manipulate_gripper()
-    
+
+    def steady(self):
+        self._position = -0.82
+        self._effort = -0.3
+        self._manipulate_gripper()
+        
     def close(self):
         self._position = -0.82
         self._effort = -0.3
@@ -236,17 +243,114 @@ class OMNIBASE():
             self.velT = velT
         self._move_base_time()
 
+class GAZE():
+    def __init__(self):
+        self._x = 0
+        self._y = 0
+        self._z = 0
+        self._reference = 'map'
+        self._cam = 'head_rgbd_sensor_gazebo_frame'
+        self._base = 'base_link'
+        self._hand = 'hand_palm_link'
+    def _gaze_point(self):
+    ###Moves head to make center point of rgbd image to coordinates w.r.t.map
+        traf1 = tfbuff.lookup_transform(self._reference, self._cam, rospy.Time(0))
+        rospy.sleep(0.5)
+        traf2 = tfbuff.lookup_transform(self._reference, self._base, rospy.Time(0)) 
+        trans,_ = tf2_obj_2_arr(traf1)
+        _, rot = tf2_obj_2_arr(traf2)
+        e = tf.transformations.euler_from_quaternion(rot)
+
+        x_rob, y_rob, z_rob, th_rob = trans[0], trans[1], trans[2], e[2]
+
+        D_x = x_rob - self._x
+        D_y = y_rob - self._y
+        D_z = z_rob - self._z
+        D_th = np.arctan2(D_y,D_x)
+        pan_correct = (- th_rob + D_th + np.pi) % (2*np.pi)
+        if(pan_correct > np.pi):
+            pan_correct -= 2*np.pi
+        if(pan_correct < -np.pi):
+            pan_correct += 2*np.pi
+
+        if ((pan_correct) > .5 * np.pi):
+            print ('Exorcist alert')
+            pan_correct=.5*np.pi
+        head_pose = [0,0]
+        head_pose[0] = pan_correct
+        tilt_correct = np.arctan2(D_z,np.linalg.norm((D_x,D_y)))
+        head_pose [1] = -tilt_correct
+        return head_pose
+    
+    def absolute(self, x, y, z):
+        self._x = x
+        self._y = y
+        self._z = z
+        self._reference = 'map'
+        return self._gaze_point()
+    def relative(self, x, y, z):
+        self._x = x
+        self._y = y
+        self._z = z
+        self._reference = 'base_link'
+        return self._gaze_point()
+    def hand(self, x, y, z):
+        self._x = x
+        self._y = y
+        self._z = z
+        self._reference = 'base_link'
+
 # Funciones aisladas
-def tf2_obj_2_arr(transf):
-    trans = []
-    trans.append(transf.transform.translation.x)
-    trans.append(transf.transform.translation.y)
-    trans.append(transf.transform.translation.z)
+
     
-    rot = []
-    rot.append(transf.transform.rotation.x)
-    rot.append(transf.transform.rotation.y)
-    rot.append(transf.transform.rotation.z)
-    rot.append(transf.transform.rotation.w)
     
-    return [trans, rot]
+class TF_MANAGER():
+    def __init__(self):
+        self._tfbuff = tf2.Buffer()
+        self._lis = tf2.TransformListener(self._tfbuff)
+        self._tf_static_broad = tf2.StaticTransformBroadcaster()
+
+    def pub_static_tf(self, trans = [0,0,0], rot = [0,0,0,1] ,pointName ='', ref="map"):
+        static_ts = TransformStamped()
+        static_ts.header.stamp = rospy.Time.now()
+        static_ts.header.frame_id = ref
+        static_ts.child_frame_id = pointName
+        static_ts.transform.translation.x = trans[0]
+        static_ts.transform.translation.y = trans[1]
+        static_ts.transform.translation.z = trans[2]
+        static_ts.transform.rotation.x = rot[0]
+        static_ts.transform.rotation.y = rot[1]
+        static_ts.transform.rotation.z = rot[2]
+        static_ts.transform.rotation.w = rot[3]
+        self._tf_static_broad.sendTransform(static_ts)
+
+    def change_ref_frame_tf(self, tf_name = '', newFrame = ''):
+        #pub_static_tf(1,0,0,tf_name,ref='head_rgbd_sensor_gazebo_frame')
+        try:
+            traf = self._tfbuff.lookup_transform(newFrame, tf_name, rospy.Time(0))
+            translation, rotational = self.tf2_obj_2_arr(traf)
+            self.pub_static_tf(trans = translation, rot = rotational, pointName = tf_name, ref=newFrame)
+            return True
+        except:
+            return False
+
+    def tf2_obj_2_arr(self, transf):
+        trans = []
+        trans.append(transf.transform.translation.x)
+        trans.append(transf.transform.translation.y)
+        trans.append(transf.transform.translation.z)
+    
+        rot = []
+        rot.append(transf.transform.rotation.x)
+        rot.append(transf.transform.rotation.y)
+        rot.append(transf.transform.rotation.z)
+        rot.append(transf.transform.rotation.w)
+
+        return [trans, rot]
+
+def talk(msg):
+    talker = rospy.Publisher('/talk_request', Voice, queue_size=10)
+    voice = Voice()
+    voice.language = 1
+    voice.sentence = msg
+    talker.publish(voice)
