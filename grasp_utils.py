@@ -319,36 +319,51 @@ class TF_MANAGER():
         self._tfbuff = tf2.Buffer()
         self._lis = tf2.TransformListener(self._tfbuff)
         self._tf_static_broad = tf2.StaticTransformBroadcaster()
+        self._broad = tf2.TransformBroadcaster()
 
-    def pub_static_tf(self, trans = [0,0,0], rot = [0,0,0,1] ,pointName ='', ref="map"):
-        static_ts = TransformStamped()
-        static_ts.header.stamp = rospy.Time.now()
-        static_ts.header.frame_id = ref
-        static_ts.child_frame_id = pointName
-        static_ts.transform.translation.x = trans[0]
-        static_ts.transform.translation.y = trans[1]
-        static_ts.transform.translation.z = trans[2]
-        static_ts.transform.rotation.x = rot[0]
-        static_ts.transform.rotation.y = rot[1]
-        static_ts.transform.rotation.z = rot[2]
-        static_ts.transform.rotation.w = rot[3]
+    def _fillMsg(self, pos = [0,0,0], rot = [0,0,0,1] ,point_name ='', ref="map"):
+        TS = TransformStamped()
+        TS.header.stamp = rospy.Time.now()
+        TS.header.frame_id = ref
+        TS.child_frame_id = point_name
+        TS.transform.translation.x = pos[0]
+        TS.transform.translation.y = pos[1]
+        TS.transform.translation.z = pos[2]
+        TS.transform.rotation.x = rot[0]
+        TS.transform.rotation.y = rot[1]
+        TS.transform.rotation.z = rot[2]
+        TS.transform.rotation.w = rot[3]
+        return TS
+
+    def pub_tf(self, pos = [0,0,0], rot = [0,0,0,1] ,point_name ='', ref="map"):
+        dinamic_ts = self._fillMsg(pos, rot, point_name, ref)
+        self._broad.sendTransform(dinamic_ts)
+
+    def pub_static_tf(self, pos = [0,0,0], rot = [0,0,0,1] ,point_name ='', ref="map"):
+        static_ts = self._fillMsg(pos, rot, point_name, ref)
         self._tf_static_broad.sendTransform(static_ts)
 
-    def change_ref_frame_tf(self, tf_name = '', newFrame = ''):
-        #pub_static_tf(1,0,0,tf_name,ref='head_rgbd_sensor_gazebo_frame')
+    def change_ref_frame_tf(self, point_name = '', new_frame = 'map'):
         try:
-            traf = self._tfbuff.lookup_transform(newFrame, tf_name, rospy.Time(0))
+            traf = self._tfbuff.lookup_transform(new_frame, point_name, rospy.Time(0))
             translation, rotational = self.tf2_obj_2_arr(traf)
-            self.pub_static_tf(trans = translation, rot = rotational, pointName = tf_name, ref=newFrame)
+            self.pub_static_tf(pos = translation, rot = rotational, point_name = point_name, ref = new_frame)
             return True
         except:
             return False
 
+    def getTF(self, target_frame='', ref_frame='map'):
+        try:
+            tf = self._tfbuff.lookup_transform(ref_frame, target_frame, rospy.Time(0))
+            return self.tf2_obj_2_arr(tf)
+        except:
+            return [False,False]
+
     def tf2_obj_2_arr(self, transf):
-        trans = []
-        trans.append(transf.transform.translation.x)
-        trans.append(transf.transform.translation.y)
-        trans.append(transf.transform.translation.z)
+        pos = []
+        pos.append(transf.transform.translation.x)
+        pos.append(transf.transform.translation.y)
+        pos.append(transf.transform.translation.z)
     
         rot = []
         rot.append(transf.transform.rotation.x)
@@ -356,14 +371,7 @@ class TF_MANAGER():
         rot.append(transf.transform.rotation.z)
         rot.append(transf.transform.rotation.w)
 
-        return [trans, rot]
-
-    def getTF(self, ref_Frame='', target_Fame=''):
-        try:
-            tf = self._tfbuff.lookup_transform(ref_Frame,target_Fame,rospy.Time(0))
-            return self.tf2_obj_2_arr(tf)
-        except:
-            return [False,False]
+        return [pos, rot]
 
 def talk(msg):
     talker = rospy.Publisher('/talk_request', Voice, queue_size=10)
