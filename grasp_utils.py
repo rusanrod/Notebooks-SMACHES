@@ -7,7 +7,7 @@ import numpy as np
 import ros_numpy
 from std_msgs.msg import String
 from tmc_msgs.msg import Voice
-from geometry_msgs.msg import Twist, WrenchStamped, TransformStamped
+from geometry_msgs.msg import Twist, WrenchStamped, TransformStamped, Pose
 from sensor_msgs.msg import Image as ImageMsg, PointCloud2
 import tmc_control_msgs.msg
 import trajectory_msgs.msg
@@ -121,8 +121,10 @@ class HAND_RGB():
             lower_threshold = (100,120,100)
             upper_threshold = (150,220,240)
         else:
-            lower_threshold = (102,95,97)
-            upper_threshold = (115,255,255)
+            # lower_threshold = (102,95,97)
+            # upper_threshold = (115,255,255)
+            lower_threshold = (105,130,100)
+            upper_threshold = (115,225,255)
         img_hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
         mask = cv2.inRange(img_hsv, lower_threshold, upper_threshold)
         res = cv2.bitwise_and(img_hsv, img_hsv, mask=mask)
@@ -203,6 +205,7 @@ class GRIPPER():
         self._effort = -0.3
         self._manipulate_gripper()
         self._apply_force()
+        rospy.sleep(0.8)
 
 class OMNIBASE():
     def __init__(self):
@@ -262,9 +265,9 @@ class GAZE():
         # _, rot = tf2_obj_2_arr(traf2)
 
 
-        trans, dc = self._tf_man.getTF(self._reference,self._cam)
+        trans, dc = self._tf_man.getTF(ref_frame=self._reference,target_frame=self._cam)
         rospy.sleep(0.3)
-        dc,rot = self._tf_man.getTF(self._reference, self._base)
+        dc,rot = self._tf_man.getTF(ref_frame=self._reference, target_frame=self._base)
 
         # trans,dc = self._tf_man.tf2_obj_2_arr(transformation1)
         # dc,rot = self._tf_man.tf2_obj_2_arr(transformation2)
@@ -379,3 +382,13 @@ def talk(msg):
     voice.language = 1
     voice.sentence = msg
     talker.publish(voice)
+def set_pose_goal(pos=[0,0,0], rot=[0,0,0,1]):
+    pose_goal = Pose()
+    pose_goal.orientation.x = rot[0]
+    pose_goal.orientation.y = rot[1]
+    pose_goal.orientation.z = rot[2]
+    pose_goal.orientation.w = rot[3]
+    pose_goal.position.x = pos[0]
+    pose_goal.position.y = pos[1]
+    pose_goal.position.z = pos[2]
+    return pose_goal
