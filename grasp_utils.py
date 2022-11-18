@@ -196,14 +196,14 @@ class GRIPPER():
         self._manipulate_gripper()
 
     def steady(self):
-        self._position = -0.82
+        self._position = 0.2
         self._effort = -0.3
         self._manipulate_gripper()
         
     def close(self):
-        self._position = -0.82
-        self._effort = -0.3
-        self._manipulate_gripper()
+        self._position = 0.0
+        self._effort = 0.3
+        # self._manipulate_gripper()
         self._apply_force()
         rospy.sleep(0.8)
 
