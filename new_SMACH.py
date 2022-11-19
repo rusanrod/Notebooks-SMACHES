@@ -83,8 +83,8 @@ class Find_AR_marker(smach.State):
         rospy.loginfo('State : Find AR marker ')
         self.tries+=1
         print('Try',self.tries,'of 5 attepmpts') 
-        if self.tries==3:
-            return 'tries'
+        if self.tries > 1:
+            grasp_base.tiny_move(velX=0.3,std_time=1.0, MAX_VEL=0.3)
         # State Find AR marker
         try:
             AR_starter.call()
@@ -106,7 +106,7 @@ class Find_AR_marker(smach.State):
                 tf_man.pub_static_tf(pos=trans, rot=rot, point_name='cassette', ref='base_link')
                 rospy.sleep(0.8)
 
-                while not tf_man.change_ref_frame_tf(point_name='cassette', new_frame='map'):
+                if not tf_man.change_ref_frame_tf(point_name='cassette', new_frame='map'):
                     rospy.sleep(0.8)
                     rospy.loginfo('Change reference frame is not done yet')
                 succ = True
